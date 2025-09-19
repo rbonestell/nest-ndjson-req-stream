@@ -35,8 +35,8 @@
 	"types": "dist/index.d.ts",
 	"scripts": {
 		"build": "rimraf -rf dist && tsup",
-		"test": "jest --config=jest.config.js --detectOpenHandles --runInBand --forceExit",
-		"test:cov": "jest --config=jest.config.js --detectOpenHandles --runInBand --coverage --forceExit",
+		"test": "jest --config=jest.config.cjs --detectOpenHandles --runInBand --forceExit",
+		"test:cov": "jest --config=jest.config.cjs --detectOpenHandles --runInBand --coverage --forceExit",
 		"lint": "eslint --ext .ts lib",
 		"lint:fix": "eslint --ext .ts lib --fix",
 		"lint:staged": "lint-staged"
