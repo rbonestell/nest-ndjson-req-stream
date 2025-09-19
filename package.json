@@ -1,0 +1,82 @@
+{
+	"name": "nest-ndjson-req-stream",
+	"type": "module",
+	"version": "1.0.0",
+	"description": "Accept and automatically parse NDJSON request streams.",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/rbonestell/nest-ndjson-req-stream.git"
+	},
+	"bugs": {
+		"url": "https://github.com/rbonestell/nest-ndjson-req-stream/issues"
+	},
+	"keywords": [
+		"nest",
+		"nestjs",
+		"ndjson",
+		"stream",
+		"asyncgenerator",
+		"express"
+	],
+	"tsup": {
+		"dts": true,
+		"bundle": true,
+		"treeshake": true,
+		"target": "node18",
+		"format": [
+			"esm"
+		],
+		"entry": [
+			"src/index.ts"
+		]
+	},
+	"private": false,
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"scripts": {
+		"build": "rimraf -rf dist && tsup",
+		"test": "jest --config=jest.config.js --detectOpenHandles --runInBand --forceExit",
+		"test:cov": "jest --config=jest.config.js --detectOpenHandles --runInBand --coverage --forceExit",
+		"lint": "eslint --ext .ts lib",
+		"lint:fix": "eslint --ext .ts lib --fix",
+		"lint:staged": "lint-staged"
+	},
+	"files": [
+		"dist"
+	],
+	"lint-staged": {
+		"lib/**/*.ts": "eslint --fix"
+	},
+	"engines": {
+		"node": ">=20.0.0"
+	},
+	"author": "Bobby Bonestell",
+	"license": "MIT",
+	"peerDependencies": {
+		"@nestjs/common": "^10.0.0 || ^11.0.0",
+		"@nestjs/core": "^11.0.0"
+	},
+	"devDependencies": {
+		"@darraghor/eslint-plugin-nestjs-typed": "^6.4.3",
+		"@eslint/js": "^9.23.0",
+		"@nestjs/common": "^11.0.0",
+		"@nestjs/platform-express": "^11.0.0",
+		"@nestjs/platform-fastify": "^11.0.0",
+		"@nestjs/testing": "^11.0.0",
+		"@types/jest": "^29.5.14",
+		"@types/node": "^22.13.1",
+		"@typescript-eslint/eslint-plugin": "^8.27.0",
+		"@typescript-eslint/parser": "^8.27.0",
+		"eslint": "^9.23.0",
+		"eslint-plugin-prettier": "^5.2.3",
+		"husky": "^9.1.7",
+		"jest": "^29.7.0",
+		"lint-staged": "^15.5.0",
+		"rimraf": "^6.0.1",
+		"ts-jest": "^29.2.5",
+		"ts-node": "^10.9.2",
+		"tsup": "^8.5.0",
+		"typescript": "^5.8.2",
+		"typescript-eslint": "^8.27.0"
+	}
+}
