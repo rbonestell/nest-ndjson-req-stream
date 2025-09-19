@@ -1,7 +1,7 @@
 {
 	"name": "nest-ndjson-req-stream",
 	"type": "module",
-	"version": "1.0.0",
+	"version": "0.1.0",
 	"description": "Accept and automatically parse NDJSON request streams.",
 	"repository": {
 		"type": "git",
