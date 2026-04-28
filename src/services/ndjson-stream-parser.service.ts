@@ -35,11 +35,10 @@ export class NdJsonStreamParser {
 							const parsed = JSON.parse(line) as T;
 							this.push(parsed);
 						} catch (error) {
-							const parseError = Object.assign(
-								new Error(`Failed to parse NDJSON line ${itemCount}: ${error.message}`),
+							return callback(Object.assign(
+								new Error(`Failed to parse NDJSON line ${itemCount}: ${(error as Error).message}`),
 								{ line, itemNumber: itemCount, cause: error },
-							);
-							this.emit('parse-error', parseError);
+							));
 						}
 					}
 				}
@@ -52,11 +51,10 @@ export class NdJsonStreamParser {
 					try {
 						this.push(JSON.parse(buffer));
 					} catch (error) {
-						const parseError = Object.assign(
-							new Error(`Failed to parse NDJSON line ${itemCount}: ${error.message}`),
+						return callback(Object.assign(
+							new Error(`Failed to parse NDJSON line ${itemCount}: ${(error as Error).message}`),
 							{ line: buffer, itemNumber: itemCount, cause: error },
-						);
-						this.emit('parse-error', parseError);
+						));
 					}
 				}
 				callback();
@@ -72,19 +70,9 @@ export class NdJsonStreamParser {
 	 */
 	static async* parseStream<T>(stream: NodeJS.ReadableStream): AsyncGenerator<T> {
 		const parser = this.createParser<T>();
-
-		// Handle parse errors
-		const errors: Error[] = [];
-		parser.on('parse-error', (error) => errors.push(error));
-
 		stream.pipe(parser);
-
 		for await (const item of parser) {
 			yield item as T;
-		}
-
-		if (errors.length > 0) {
-			throw new AggregateError(errors, `NDJSON stream contained ${errors.length} malformed line(s)`);
 		}
 	}
 }

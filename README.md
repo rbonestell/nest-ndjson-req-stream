@@ -74,6 +74,27 @@ export class StreamController {
 }
 ```
 
+### Error Handling
+
+If the stream contains a malformed JSON line, `request.body` will throw at that point in the `for await` loop. Wrap your controller logic to return a 400:
+
+```typescript
+@Post('process')
+async processStream(
+  @NdJsonStreamReq<DataItem>() request: NdJsonStreamRequest<DataItem>
+) {
+  try {
+    for await (const item of request.body) {
+      console.log('Received:', item);
+    }
+  } catch (error) {
+    throw new BadRequestException(`Invalid NDJSON: ${error.message}`);
+  }
+}
+```
+
+The error object carries `.line` (the offending text), `.itemNumber` (1-based position in the stream), and `.cause` (the original `SyntaxError`).
+
 ### Type Safety
 
 Use TypeScript generics for type-safe stream processing:

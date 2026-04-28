@@ -1,4 +1,5 @@
 import { Readable, Transform } from 'stream';
+import { Test } from '@nestjs/testing';
 import { NdJsonStreamParser } from './ndjson-stream-parser.service';
 
 describe('NdJsonStreamParser', () => {
@@ -109,33 +110,23 @@ describe('NdJsonStreamParser', () => {
 			parser.end();
 		});
 
-		it('should emit parse-error for invalid JSON', (done) => {
+		it('should emit error and stop stream on invalid JSON', (done) => {
 			const result: any[] = [];
-			const errors: Error[] = [];
 			const validData = { id: 1, valid: true };
 
 			parser.on('data', (chunk) => result.push(chunk));
-			parser.on('parse-error', (err: Error) => errors.push(err));
-
-			parser.on('end', () => {
-				expect(result).toHaveLength(1);
-				expect(result[0]).toEqual(validData);
-				expect(errors).toHaveLength(2);
-				expect(errors[0]).toBeInstanceOf(Error);
-				expect(errors[0].message).toContain('Failed to parse NDJSON line 1');
-				expect((errors[0] as any).line).toBe('invalid json');
-				expect((errors[0] as any).itemNumber).toBe(1);
-				expect((errors[0] as any).cause).toBeDefined();
-				expect(errors[1]).toBeInstanceOf(Error);
-				expect(errors[1].message).toContain('Failed to parse NDJSON line 3');
-				expect((errors[1] as any).line).toBe('bad data');
-				expect((errors[1] as any).itemNumber).toBe(3);
+			parser.on('error', (err: Error) => {
+				expect(result).toHaveLength(0);
+				expect(err).toBeInstanceOf(Error);
+				expect(err.message).toContain('Failed to parse NDJSON line 1');
+				expect((err as any).line).toBe('invalid json');
+				expect((err as any).itemNumber).toBe(1);
+				expect((err as any).cause).toBeDefined();
 				done();
 			});
 
 			parser.write('invalid json\n');
 			parser.write(JSON.stringify(validData) + '\n');
-			parser.write('bad data\n');
 			parser.end();
 		});
 
@@ -155,18 +146,12 @@ describe('NdJsonStreamParser', () => {
 			parser.end();
 		});
 
-		it('should emit parse-error for invalid JSON in flush', (done) => {
-			const errors: Error[] = [];
-
-			parser.on('parse-error', (err: Error) => errors.push(err));
-
-			// Use 'finish' event instead of 'end' for Transform streams that don't push data
-			parser.on('finish', () => {
-				expect(errors).toHaveLength(1);
-				expect(errors[0]).toBeInstanceOf(Error);
-				expect(errors[0].message).toMatch(/Failed to parse NDJSON line \d+:/);
-				expect((errors[0] as any).line).toBe('invalid json data');
-				expect((errors[0] as any).cause).toBeDefined();
+		it('should emit error for invalid JSON in flush', (done) => {
+			parser.on('error', (err: Error) => {
+				expect(err).toBeInstanceOf(Error);
+				expect(err.message).toMatch(/Failed to parse NDJSON line \d+:/);
+				expect((err as any).line).toBe('invalid json data');
+				expect((err as any).cause).toBeDefined();
 				done();
 			});
 
@@ -230,19 +215,13 @@ describe('NdJsonStreamParser', () => {
 			parser.end();
 		});
 
-		it('should maintain correct item count across multiple writes', (done) => {
-			const errors: Error[] = [];
+		it('should emit error on first invalid line and stop processing', (done) => {
 			const validData: any[] = [];
 
 			parser.on('data', (chunk) => validData.push(chunk));
-			parser.on('parse-error', (err: Error) => errors.push(err));
-
-			parser.on('end', () => {
-				expect(validData).toHaveLength(2);
-				expect(errors).toHaveLength(2);
-				// Item count increments for each line, including invalid ones
-				expect((errors[0] as any).itemNumber).toBe(2);
-				expect((errors[1] as any).itemNumber).toBe(4);
+			parser.on('error', (err: Error) => {
+				expect(validData).toHaveLength(1);
+				expect((err as any).itemNumber).toBe(2);
 				done();
 			});
 
@@ -250,6 +229,53 @@ describe('NdJsonStreamParser', () => {
 			parser.write('bad\n');
 			parser.write('{"valid": 2}\n');
 			parser.write('invalid\n');
+			parser.end();
+		});
+
+		it('should stop at first invalid line when valid and invalid JSON are in the same chunk', (done) => {
+			const result: any[] = [];
+
+			parser.on('data', (chunk) => result.push(chunk));
+			parser.on('error', (err: Error) => {
+				expect(result).toHaveLength(1);
+				expect(result[0]).toEqual({ valid: true });
+				expect((err as any).itemNumber).toBe(2);
+				expect((err as any).line).toBe('bad json');
+				done();
+			});
+
+			// Both lines in a single write — single transform() invocation processes both
+			parser.write('{"valid": true}\nbad json\n');
+			parser.end();
+		});
+
+		it('should count blank lines toward itemNumber', (done) => {
+			parser.on('error', (err: Error) => {
+				// blank line is item 1, valid is item 2, bad is item 3
+				expect((err as any).itemNumber).toBe(3);
+				done();
+			});
+
+			parser.write('\n{"valid": 1}\nbad\n');
+			parser.end();
+		});
+
+		it('should emit error from flush when stream ends mid-multi-byte UTF-8 sequence', (done) => {
+			// Write first byte of '€' (0xE2) without completing the 3-byte sequence.
+			// StringDecoder buffers it; decoder.end() in flush emits U+FFFD, making JSON invalid.
+			const partial = Buffer.concat([
+				Buffer.from('{"text":"'),
+				Buffer.from([0xe2]), // first byte of €, sequence never completed
+			]);
+
+			parser.on('error', (err: Error) => {
+				expect(err).toBeInstanceOf(Error);
+				expect(err.message).toMatch(/Failed to parse NDJSON line \d+:/);
+				expect((err as any).line).toContain('�');
+				done();
+			});
+
+			parser.write(partial);
 			parser.end();
 		});
 	});
@@ -287,17 +313,16 @@ describe('NdJsonStreamParser', () => {
 			expect(result).toEqual(testData);
 		});
 
-		it('should throw AggregateError when stream contains malformed lines', async () => {
+		it('should throw immediately when a malformed line is encountered', async () => {
 			const readable = new Readable({
 				read() {
 					// Empty implementation
 				}
 			});
 
-			const validItems: any[] = [];
 			const promise = (async () => {
-				for await (const item of NdJsonStreamParser.parseStream(readable)) {
-					validItems.push(item);
+				for await (const _item of NdJsonStreamParser.parseStream(readable)) {
+					// consume items
 				}
 			})();
 
@@ -305,10 +330,8 @@ describe('NdJsonStreamParser', () => {
 			readable.push('malformed json\n');
 			readable.push(null);
 
-			await expect(promise).rejects.toThrow(AggregateError);
-			await expect(promise).rejects.toThrow('NDJSON stream contained 1 malformed line(s)');
-			expect(validItems).toHaveLength(1);
-			expect(validItems[0]).toEqual({ valid: true });
+			await expect(promise).rejects.toThrow(Error);
+			await expect(promise).rejects.toThrow('Failed to parse NDJSON line');
 		});
 
 		it('should not throw when stream has no parse errors', async () => {
@@ -462,6 +485,16 @@ describe('NdJsonStreamParser', () => {
 			const ndjson = specialValues.map(item => JSON.stringify(item)).join('\n') + '\n';
 			parser.write(ndjson);
 			parser.end();
+		});
+	});
+
+	describe('NestJS DI', () => {
+		it('should be instantiable via NestJS DI container', async () => {
+			const module = await Test.createTestingModule({
+				providers: [NdJsonStreamParser],
+			}).compile();
+
+			expect(module.get(NdJsonStreamParser)).toBeInstanceOf(NdJsonStreamParser);
 		});
 	});
 });
