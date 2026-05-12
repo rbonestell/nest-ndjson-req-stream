@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.1]
+
+### Fixed
+
+- **`NdJsonStreamParser.parseStream()`** — wrapped the iteration in `try/finally`
+  so that on every exit path (normal completion, consumer `break`, consumer
+  `throw`, or upstream error) the parser is unpiped from the source and both
+  streams are destroyed. Previously, an aborted consumer left the source piped
+  with no drain, leaking the underlying socket and any intermediate buffers
+  (e.g. a gunzip `PassThrough`). The source is destroyed because an aborted
+  consumer means the request body is no longer wanted; for an Express
+  `IncomingMessage` this releases the socket promptly.
+
 ## [0.2.0]
 
 ### Fixed

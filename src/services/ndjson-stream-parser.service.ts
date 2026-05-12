@@ -63,7 +63,14 @@ export class NdJsonStreamParser {
 	}
 
 	/**
-	 * Parses a readable stream as NDJSON and yields parsed objects
+	 * Parses a readable stream as NDJSON and yields parsed objects.
+	 *
+	 * On any exit path (normal completion, consumer `break`, consumer `throw`,
+	 * or upstream error) the parser is unpiped from the source and both streams
+	 * are destroyed. Without this teardown, an aborted consumer would leave the
+	 * source stream piped with no drain, leaking the underlying socket and any
+	 * intermediate buffers (e.g. a gunzip PassThrough).
+	 *
 	 * @template T - The type of objects in the NDJSON stream
 	 * @param stream - The readable stream containing NDJSON data
 	 * @returns An async generator that yields parsed objects
@@ -71,8 +78,15 @@ export class NdJsonStreamParser {
 	static async* parseStream<T>(stream: NodeJS.ReadableStream): AsyncGenerator<T> {
 		const parser = this.createParser<T>();
 		stream.pipe(parser);
-		for await (const item of parser) {
-			yield item as T;
+		try {
+			for await (const item of parser) {
+				yield item as T;
+			}
+		} finally {
+			stream.unpipe(parser);
+			if (!parser.destroyed) parser.destroy();
+			const src = stream as NodeJS.ReadableStream & { destroyed?: boolean; destroy?: (err?: Error) => void };
+			if (typeof src.destroy === 'function' && !src.destroyed) src.destroy();
 		}
 	}
 }

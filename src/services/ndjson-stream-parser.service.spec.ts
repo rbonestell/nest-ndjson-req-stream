@@ -407,6 +407,111 @@ describe('NdJsonStreamParser', () => {
 			expect(result).toEqual(testData);
 		});
 
+		it('should destroy source and parser when consumer throws mid-stream', async () => {
+			const readable = new Readable({ read() { /* no-op */ } });
+			let observedParser: Transform | undefined;
+			const origPipe = readable.pipe.bind(readable);
+			jest.spyOn(readable, 'pipe').mockImplementation((dest: any, opts?: any) => {
+				observedParser = dest as Transform;
+				return origPipe(dest, opts);
+			});
+
+			const consumer = (async () => {
+				let count = 0;
+				for await (const _item of NdJsonStreamParser.parseStream(readable)) {
+					count++;
+					if (count === 1) throw new Error('consumer-abort');
+				}
+			})();
+
+			readable.push('{"a":1}\n');
+			readable.push('{"a":2}\n');
+			readable.push('{"a":3}\n');
+
+			await expect(consumer).rejects.toThrow('consumer-abort');
+			expect(readable.destroyed).toBe(true);
+			expect(observedParser?.destroyed).toBe(true);
+		});
+
+		it('should destroy source and parser when consumer breaks early', async () => {
+			const readable = new Readable({ read() { /* no-op */ } });
+			let observedParser: Transform | undefined;
+			const origPipe = readable.pipe.bind(readable);
+			jest.spyOn(readable, 'pipe').mockImplementation((dest: any, opts?: any) => {
+				observedParser = dest as Transform;
+				return origPipe(dest, opts);
+			});
+
+			const consumer = (async () => {
+				for await (const _item of NdJsonStreamParser.parseStream(readable)) {
+					break;
+				}
+			})();
+
+			readable.push('{"a":1}\n');
+			readable.push('{"a":2}\n');
+
+			await consumer;
+			expect(readable.destroyed).toBe(true);
+			expect(observedParser?.destroyed).toBe(true);
+		});
+
+		it('should clean up without errors on normal completion', async () => {
+			const readable = new Readable({ read() { /* no-op */ } });
+			let observedParser: Transform | undefined;
+			const origPipe = readable.pipe.bind(readable);
+			jest.spyOn(readable, 'pipe').mockImplementation((dest: any, opts?: any) => {
+				observedParser = dest as Transform;
+				return origPipe(dest, opts);
+			});
+
+			const errors: Error[] = [];
+			readable.on('error', (e) => errors.push(e));
+
+			const consumer = (async () => {
+				const out: any[] = [];
+				for await (const item of NdJsonStreamParser.parseStream(readable)) {
+					out.push(item);
+				}
+				return out;
+			})();
+
+			readable.push('{"a":1}\n');
+			readable.push('{"a":2}\n');
+			readable.push(null);
+
+			await expect(consumer).resolves.toEqual([{ a: 1 }, { a: 2 }]);
+			expect(errors).toEqual([]);
+			expect(observedParser?.destroyed).toBe(true);
+		});
+
+		it('should surface per-line JSON parse failure as an Error to the consumer (regression: emit-bug)', async () => {
+			const readable = new Readable({ read() { /* no-op */ } });
+
+			const consumer = (async () => {
+				const errs: Error[] = [];
+				try {
+					for await (const _item of NdJsonStreamParser.parseStream(readable)) {
+						// consume
+					}
+				} catch (e) {
+					errs.push(e as Error);
+				}
+				return errs;
+			})();
+
+			readable.push('{"valid":1}\n');
+			readable.push('not json\n');
+			readable.push(null);
+
+			const errs = await consumer;
+			expect(errs).toHaveLength(1);
+			expect(errs[0]).toBeInstanceOf(Error);
+			expect(errs[0].message).toContain('Failed to parse NDJSON line');
+			expect((errs[0] as any).line).toBe('not json');
+			expect((errs[0] as any).itemNumber).toBe(2);
+		});
+
 		it('should pipe stream to parser correctly', async () => {
 			const readable = new Readable({
 				read() {
