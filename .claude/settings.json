@@ -1,0 +1,18 @@
+{
+  "extraKnownMarketplaces": {
+    "constellation-plugins": {
+      "source": {
+        "source": "github",
+        "repo": "ShiftinBits/constellation-claude"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "constellation@constellation-plugins": true
+  },
+  "permissions": {
+    "allow": [
+      "mcp__plugin_constellation_constellation"
+    ]
+  }
+}
