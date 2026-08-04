@@ -1,0 +1,17 @@
+name: Constellation Index
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  index:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ShiftinBits/constellation-github@v1
+        with:
+          access-key: ${{ secrets.CONSTELLATION_ACCESS_KEY }}
